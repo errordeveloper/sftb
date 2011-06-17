@@ -11,6 +11,29 @@
 
 /* There should be one sftb_s struc, but keep it simple for now! */
 
+SNDFILE		*input_file;
+SF_INFO		sfinfo ;
+
+int		frames ;
+
+
+/*
+ * Retrieving values from Verilog
+ *
+ * s_vpi_value v;
+ * v.format = vpiIntVal;
+ * vpi_get_value (handle, &v);
+ *
+ * value is in v.value.integer
+ *
+ * Writing values to Verilog
+ * 
+ * s_vpi_value v;
+ * v.format = vpiIntVal;
+ * v.value.integer = 0x1234;
+ * vpi_put_value (handle, &v, NULL, vpiNoDelay);
+ */
+
 static void sftb_open_input_file_calltf (char *name) ;
 static void sftb_open_output_file_calltf (char *name) ;
 
@@ -63,25 +86,11 @@ void sftb_register()
 void (*vlog_startup_routines[])() = { sftb_register, 0 };
 
 int sftb_open_input_file(char *)
-{   /* This is a buffer of double precision floating point values
-    ** which will hold our data while we process it.
-    */
-    static double data [BUFFER_LEN] ;
+{
+    static int data [BUFFER_LEN] ;
 
-    /* A SNDFILE is very much like a FILE in the Standard C library. The
-    ** sf_open function return an SNDFILE* pointer when they sucessfully
-	** open the specified file.
-    */
-    SNDFILE      *infile, *outfile ;
 
-    /* A pointer to an SF_INFO stutct is passed to sf_open.
-    ** On read, the library fills this struct with information about the file.
-    ** On write, the struct must be filled in before calling sf_open.
-    */
-    SF_INFO		sfinfo ;
-    int			readcount ;
-    const char	*infilename = "./data/mono16@22050.f7620.aif" ;
-    //const char	*outfilename = "output.wav" ;
+    const char	*input_file_name = "./data/mono16@22050.f7620.aif" ;
 
     /* Here's where we open the input file. We pass sf_open the file name and
     ** a pointer to an SF_INFO struct.
@@ -97,41 +106,40 @@ int sftb_open_input_file(char *)
 	**		sfinfo.format   = SF_FORMAT_RAW | SF_FORMAT_PCM_16 ;
 	**		sfinfo.channels = 2 ;
     */
-    if (! (infile = sf_open (infilename, SFM_READ, &sfinfo)))
+    if (! (input_file = sf_open (input_file_name, SFM_READ, &sfinfo)))
     {   /* Open failed so print an error message. */
-	printf ("Not able to open input file %s.\n", infilename) ;
+	printf ("Not able to open input file %s.\n", input_file_name) ;
 	/* Print the error message from libsndfile. */
 	puts (sf_strerror (NULL)) ;
 	return  1 ;
 	} ;
 
     if (sfinfo.channels > MAX_CHANNELS)
-    {   printf ("Not able to process more than %d channels\n", MAX_CHANNELS) ;
+    {   printf ("Not able to process more than %d channel(s)\n", MAX_CHANNELS) ;
 	return  1 ;
 	} ;
-    /* Open the output file. */
-    /*
-    if (! (outfile = sf_open (outfilename, SFM_WRITE, &sfinfo)))
-    {   printf ("Not able to open output file %s.\n", outfilename) ;
-	puts (sf_strerror (NULL)) ;
-	return  1 ;
-	} ;
-    */
 
-    /* While there are.frames in the input file, read them, process
-    ** them and write them to the output file.
-    */
-    while ((readcount = sf_read_double (infile, data, BUFFER_LEN)))
-    {   process_data (data, readcount, sfinfo.channels) ;
-	sf_write_double (outfile, data, readcount) ;
-	} ;
+    frames = sf_read_int (input_file, data, BUFFER_LEN);
 
-    /* Close input and output files. */
-    sf_close (infile) ;
-    sf_close (outfile) ;
+    printf ("Read %d sample frames.\n", frames) ;
 
     return 0 ;
-} /* main */
+}
+
+void sftb_close_input_file ()
+{
+    sf_close (input_file) ;
+
+    return 0 ;
+}
+
+void sftb_close_output_file ()
+{
+    // sf_close (output_file) ;
+
+    return 0 ;
+}
+
 
 static int sftb_open_input_file_calltf(char *user_data)
 {
@@ -141,24 +149,25 @@ static int sftb_open_input_file_calltf(char *user_data)
 
 
 static void
-sftb_put_data (double *data, int count, int channels)
-{
+sftb_put_data (int *data)
+{ 
+    static unsigned int i = 0 ;
 
-//double channel_gain [MAX_CHANNELS] = { 0.5, 0.8, 0.1, 0.4, 0.4, 0.9 } ;
+    s_vpi_value v ;
 
-    int k, chan ;
+    v.format = vpiIntVal ;
+ 
+    if (i == frames) {
 
-    /* Process the data here.
-    ** If the soundfile contains more then 1 channel you need to take care of
-    ** the data interleaving youself.
-    ** Current we just apply a channel dependant gain.
-    */
+	i = 0 ;
 
-    for (chan = 0 ; chan < channels ; chan ++)
-	for (k = chan ; k < count ; k+= channels)
-	    //data [k] *= channel_gain [chan] ;
+	/* Perhaps we need to pad it with zeros ... */
+
+    } // else { }
+
+	v.value.integer = data[i]
+
+    i += channels;
 
     return ;
 } /* process_data */
-
-
