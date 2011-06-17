@@ -1,0 +1,8 @@
+*.vpi
+*.vpp
+*.o
+
+*.sw?
+
+# *.tar.gz
+vpi/lib/
