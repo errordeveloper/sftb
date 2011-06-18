@@ -2,7 +2,7 @@
 # iverilog -ohello.vvp hello.v
 # vvp -M. -mhello hello.vvp
 
-VERILOG_SIM	?= iverilog
+VERILOG_SIM	?= iverilog -g2005
 VERILOG_VPI	?= iverilog-vpi
 
 VERILOG_VPI_FLAGS = `pkg-config sndfile --libs --cflags`

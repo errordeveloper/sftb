@@ -5,7 +5,7 @@
 # include	<sndfile.h>
 
 /* This will be the length of the buffer used to hold frames. */
-#define		MAX_SIZE	4096
+#define		MAX_SIZE	32
 
 /* Limit to mono files to start with */
 #define		MAX_CHAN	1
@@ -154,27 +154,43 @@ sftb_close_output_file (char *name)
 static PLI_INT32
 sftb_fetch_sample_calltf (char *name)
 { 
-    static sf_count_t i = 0 ;
+    static sf_count_t i = 0, b ;
 
-    vpi_printf("Fetching sample %d.\n", (int)i);
+    vpi_printf("Fetching sample %d.\n", (int)i) ;
 
     if ( i == 0 ) {
 
-	if (sf.read == 0) {
-    	    sf.read = sf_read_int (sf.file, sf.data, MAX_SIZE) ;
+	if ( sf.read == 0 ) {
+
+	    vpi_printf("Start at %d\n", (int)sf.read) ;
+    	    b = sf_read_int (sf.file, sf.data, MAX_SIZE) ;
+	    sf.read = b ;
+
 	} else {
-	    sf.read = sf_seek (sf.file, sf.read, SEEK_SET);
+
+	    vpi_printf("Seek to %d\n", (int)sf.read) ;
+	    sf.read += sf_seek (sf.file, sf.read, SEEK_SET) ;
+
 	    if ( sf.read > 0 ) {
-	         sf_read_int (sf.file, sf.data, MAX_SIZE);
+
+	         b = sf_read_int (sf.file, sf.data, MAX_SIZE) ;
+
+		 if ( b < MAX_SIZE ) {
+
+		     sf.read = 0 ;
+		     vpi_printf("Seek to %d\n", (int)sf.read) ;
+                     sf_seek (sf.file, sf.read, SEEK_SET) ;
+
+		 }
+
 	    } else {
-		 vpi_printf("Seek error!");
-		 return -1;
+		 vpi_printf("Seek error!") ;
+		 return -1 ;
 	    }
 	}
-
     }
 
-    vpi_printf ("Buffered %d sample frames.\n", sf.read) ;
+    vpi_printf ("Buffered %d sample frames.\n", (int)b) ;
 
     s_vpi_value v ;
 
@@ -182,9 +198,11 @@ sftb_fetch_sample_calltf (char *name)
  
     v.value.integer = sf.data[i];
 
-    i = (i + sf.info.channels) % MAX_SIZE;
+    //vpi_printf("Sample value is %d\n.", sf.data[i]) ;
 
-    return 0;
+    i = (i + sf.info.channels) % b ;
+
+    return 0 ;
 }
 
 static PLI_INT32
