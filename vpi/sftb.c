@@ -5,7 +5,7 @@
 # include	<sndfile.h>
 
 /* This will be the length of the buffer used to hold frames. */
-#define		MAX_SIZE	32
+#define		MAX_SIZE	4096
 
 /* Limit to mono files to start with */
 #define		MAX_CHAN	1
@@ -17,7 +17,9 @@ const char     *name;	// path name
 SNDFILE	       *file;	// file descriptor
 SF_INFO		info;	// file metadata
 int	data[MAX_SIZE];	// data buffer
-sf_count_t	read;	// next offset
+sf_count_t	seek;	// next offset
+sf_count_t	read;	// current buffer lenght
+vpiHandle	func;
 };
 
 
@@ -73,7 +75,7 @@ void sftb_register()
 
       vpi_register_systf(&tf_data);
 
-      tf_data.type      = vpiSysTask;
+      tf_data.type      = vpiSysFunc;
       tf_data.tfname    = "$sftb_store_sample";
       tf_data.calltf    = sftb_store_sample_calltf;
       tf_data.compiletf = 0;
@@ -82,7 +84,7 @@ void sftb_register()
 
       vpi_register_systf(&tf_data);
 
-      tf_data.type      = vpiSysTask;
+      tf_data.type      = vpiSysFunc;
       tf_data.tfname    = "$sftb_fetch_sample";
       tf_data.calltf    = sftb_fetch_sample_calltf;
       tf_data.compiletf = 0;
@@ -99,6 +101,8 @@ sftb_open_input_file_calltf(char *name)
 {
 
     sf.name = "./data/mono16@22050.f7620.aif" ;
+
+    sf.func = vpi_handle (vpiSysTfCall, NULL);
 
     //sf.data = malloc(MAX_SIZE);
 
@@ -118,6 +122,7 @@ sftb_open_input_file_calltf(char *name)
     vpi_printf("The size of the audio file is %d frames.\n", (int)sf.info.frames);
 
     sf.read = 0 ;
+    sf.seek = 0 ;
 
     return 0 ;
 }
@@ -154,53 +159,50 @@ sftb_close_output_file (char *name)
 static PLI_INT32
 sftb_fetch_sample_calltf (char *name)
 { 
-    static sf_count_t i = 0, b ;
+    static sf_count_t i = 0 ;
 
     vpi_printf("Fetching sample %d.\n", (int)i) ;
 
     if ( i == 0 ) {
 
-	if ( sf.read == 0 ) {
 
-	    vpi_printf("Start at %d\n", (int)sf.read) ;
-    	    b = sf_read_int (sf.file, sf.data, MAX_SIZE) ;
-	    sf.read = b ;
+	    if ( sf.read != 0 ) {
 
-	} else {
+		vpi_printf("Seek to %d.\n", (int)sf.seek) ;
 
-	    vpi_printf("Seek to %d\n", (int)sf.read) ;
-	    sf.read += sf_seek (sf.file, sf.read, SEEK_SET) ;
+	    	sf.seek = sf_seek (sf.file, sf.seek, SEEK_SET) ;
 
-	    if ( sf.read > 0 ) {
+		vpi_printf("Seek returned %d.\n", (int)sf.seek) ;
 
-	         b = sf_read_int (sf.file, sf.data, MAX_SIZE) ;
-
-		 if ( b < MAX_SIZE ) {
-
-		     sf.read = 0 ;
-		     vpi_printf("Seek to %d\n", (int)sf.read) ;
-                     sf_seek (sf.file, sf.read, SEEK_SET) ;
-
-		 }
-
-	    } else {
-		 vpi_printf("Seek error!") ;
-		 return -1 ;
 	    }
-	}
+
+	    if ( sf.seek != -1 ) {
+
+    	    	sf.read = sf_read_int (sf.file, sf.data, MAX_SIZE) ;
+
+		if ( sf.read < MAX_SIZE ) {
+			sf.seek = 0 ;
+		} else {
+			sf.seek += sf.read ;
+		}
+
+
+	    } else { vpi_printf("Seek error!\n") ; return -1 ; }
     }
 
-    vpi_printf ("Buffered %d sample frames.\n", (int)b) ;
+    vpi_printf ("Buffered %d sample frames.\n", (int)sf.read) ;
 
     s_vpi_value v ;
 
     v.format = vpiIntVal ;
  
-    v.value.integer = sf.data[i];
+    v.value.integer = sf.data[i] ;
 
-    //vpi_printf("Sample value is %d\n.", sf.data[i]) ;
+    vpi_put_value (sf.func, &v, NULL, vpiNoDelay) ;
 
-    i = (i + sf.info.channels) % b ;
+    vpi_printf("Sample value is %d.\n", v.value.integer) ;
+
+    i = (i + sf.info.channels) % sf.read ;
 
     return 0 ;
 }
