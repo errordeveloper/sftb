@@ -13,14 +13,15 @@
 /* There should be one sftb_s struc, but keep it simple for now! */
 
 typedef struct {
-vpiHandle       name;	// path name
 SNDFILE	       *file;	// file descriptor
 SF_INFO		info;	// file metadata
-int	data[MAX_SIZE];	// data buffer
+vpiHandle       name;	// file path argument
 sf_count_t	seek;	// next offset in frames
 sf_count_t	read;	// current buffer lenght
 vpiHandle	call;
 vpiHandle	scan;
+vpiHandle	wire[MAX_CHAN];
+int		data[MAX_SIZE];
 } s_sftb_misc ;
 
 
@@ -106,7 +107,7 @@ sftb_open_input_file_calltf(char *f)
     sf.call = vpi_handle (vpiSysTfCall, NULL);
     sf.scan = vpi_iterate (vpiArgument, sf.call);
 
-    sf.name = vpi_scan(sf.scan) ;
+    sf.name = vpi_scan (sf.scan) ;
 
     if ( sf.name == 0 ) {
 	vpi_printf ("%s: first parameter is missing.\n", f) ;
@@ -195,7 +196,6 @@ sftb_fetch_sample_calltf (char *f)
 
     if ( i == 0 ) {
 
-
 	    if ( sf.read != 0 ) {
 
 		vpi_printf ("%s:sf_seek(..., %d, ...) =", f, (int)sf.seek) ;
@@ -210,10 +210,12 @@ sftb_fetch_sample_calltf (char *f)
 
     	    	sf.read = sf_read_int (sf.file, sf.data, MAX_SIZE) ;
 
+		vpi_printf ("%s: buffered %d samples;\n", f, (int)sf.read) ;
+
 		if ( sf.read < MAX_SIZE ) {
 			sf.seek = 0 ;
 		} else {
-			sf.seek += sf.read ;
+			sf.seek += ( sf.read / sf.info.channels ) ;
 		}
 
 
@@ -224,7 +226,6 @@ sftb_fetch_sample_calltf (char *f)
 	    }
     }
 
-    vpi_printf ("%s: buffered %d samples;\n", f, (int)sf.read) ;
 
     /* parse arguments (which are names of wires)
      * and, if not 0, and there is a channel for
@@ -237,6 +238,21 @@ sftb_fetch_sample_calltf (char *f)
      * the fourth wire will be receive zeros.
     */
 
+    sf.call = vpi_handle (vpiSysTfCall, 0) ;
+    sf.scan = vpi_iterate (sf.call) ;
+
+    for(int k = 0; k < MAX_CHAN; k++) {
+    
+       sf.wire[k] = vpi_scan (sf.scan) ;
+
+       if ( sf.wire[k] == 0 ) break ;
+
+
+       if ( sf.wire[k] != vpiReg ) {
+
+	       //// TODO !!!!
+
+    }
 
     tb.format = vpiIntVal ;
  
@@ -257,3 +273,5 @@ sftb_store_sample_calltf (char *f)
     vpi_printf("Not implemented (TODO)!\n");
     return 0 ;
 }
+
+
