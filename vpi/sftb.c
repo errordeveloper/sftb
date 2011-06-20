@@ -12,19 +12,20 @@
 
 /* There should be one sftb_s struc, but keep it simple for now! */
 
-struct sftb_s {
-const char     *name;	// path name
+typedef struct {
+vpiHandle       name;	// path name
 SNDFILE	       *file;	// file descriptor
 SF_INFO		info;	// file metadata
 int	data[MAX_SIZE];	// data buffer
-sf_count_t	seek;	// next offset
+sf_count_t	seek;	// next offset in frames
 sf_count_t	read;	// current buffer lenght
-vpiHandle	func;
-};
+vpiHandle	call;
+vpiHandle	scan;
+} s_sftb_misc ;
 
 
-static struct sftb_s sf;
-
+static s_sftb_misc 	sf ;
+static s_vpi_value	tb ;
 
 /* Pointer to the buffer, will allocate it for a small file. */
 
@@ -75,7 +76,7 @@ void sftb_register()
 
       vpi_register_systf(&tf_data);
 
-      tf_data.type      = vpiSysFunc;
+      tf_data.type      = vpiSysTask;
       tf_data.tfname    = "$sftb_store_sample";
       tf_data.calltf    = sftb_store_sample_calltf;
       tf_data.compiletf = 0;
@@ -84,7 +85,7 @@ void sftb_register()
 
       vpi_register_systf(&tf_data);
 
-      tf_data.type      = vpiSysFunc;
+      tf_data.type      = vpiSysTask;
       tf_data.tfname    = "$sftb_fetch_sample";
       tf_data.calltf    = sftb_fetch_sample_calltf;
       tf_data.compiletf = 0;
@@ -97,29 +98,58 @@ void sftb_register()
 void (*vlog_startup_routines[])() = { sftb_register, 0 };
 
 static PLI_INT32
-sftb_open_input_file_calltf(char *name)
+sftb_open_input_file_calltf(char *f)
 {
 
-    sf.name = "./data/mono16@22050.f7620.aif" ;
+    //sf.name = "./data/mono16@22050.f7620.aif" ;
 
-    sf.func = vpi_handle (vpiSysTfCall, NULL);
+    sf.call = vpi_handle (vpiSysTfCall, NULL);
+    sf.scan = vpi_iterate (vpiArgument, sf.call);
 
-    //sf.data = malloc(MAX_SIZE);
+    sf.name = vpi_scan(sf.scan) ;
 
-    if (! (sf.file = sf_open (sf.name, SFM_READ, &(sf.info))))
-    {   /* Open failed so print an error message. */
-	vpi_printf ("Not able to open input file %s.\n", sf.name) ;
-	/* Print the error message from libsndfile. */
-	puts (sf_strerror (NULL)) ;
+    if ( sf.name == 0 ) {
+	vpi_printf ("%s: first parameter is missing.\n", f) ;
+	vpi_control(vpiFinish, 1) ;
+
+    } else {
+	    switch(vpi_get(vpiType, sf.name)) {
+
+	    case vpiConstant:
+	    case vpiStringConst:
+	        break;
+	    default:
+		vpi_printf ("%s: first parameter must be a string.\n", f) ;
+		vpi_control(vpiFinish, 1) ;
+		return -1 ;
+	    break;
+	    }
+    }
+
+    vpi_free_object (sf.scan) ;
+
+    tb.format = vpiStringVal;
+    vpi_get_value (sf.name, &tb) ;
+
+    if ( !( sf.file = sf_open (tb.value.str, SFM_READ, &(sf.info)) ) ) {
+
+	vpi_printf ("%s: not able to open input file %s.\n",
+		     f, tb.value.str) ;
+	vpi_control(vpiFinish, 1) ;
 	return  1 ;
-	} ;
+    }
 
-    if (sf.info.channels > MAX_CHAN)
-    {   vpi_printf ("Not able to process more than %d channel(s)\n", MAX_CHAN) ;
+    if (sf.info.channels > MAX_CHAN) {
+	vpi_printf ("%s: not able to process %d channel(s).\n",
+		    f, (int)sf.info.channels) ;
+	vpi_printf ("%s: my limit is %d channel(s).\n", f, MAX_CHAN) ;
+	vpi_control(vpiFinish, 1) ;
 	return  1 ;
-	} ;
+    }
 
-    vpi_printf("The size of the audio file is %d frames.\n", (int)sf.info.frames);
+    vpi_printf("%s: %s\n", f, tb.value.str) ;
+    vpi_printf("%s: the lenght of this audio file is %d frames.\n",
+	       f, (int)sf.info.frames) ;
 
     sf.read = 0 ;
     sf.seek = 0 ;
@@ -139,17 +169,17 @@ sftb_close_input_file (char *name)
 
 
 static PLI_INT32
-sftb_open_output_file_calltf(char *name)
+sftb_open_output_file_calltf(char *f)
 {
-      vpi_printf ("Not implemented (TODO)!\n") ;
+      vpi_printf ("%s: Not implemented (TODO)!\n", f) ;
       return 0;
 }
 
 static PLI_INT32
-sftb_close_output_file (char *name)
+sftb_close_output_file (char *f)
 {
     // sf_close (output_file) ;
-    vpi_printf ("Not implemented (TODO)!\n");
+    vpi_printf ("%s: Not implemented (TODO)!\n", f);
 
     //free (sf.data) ;
 
@@ -157,22 +187,22 @@ sftb_close_output_file (char *name)
 }
 
 static PLI_INT32
-sftb_fetch_sample_calltf (char *name)
+sftb_fetch_sample_calltf (char *f)
 { 
     static sf_count_t i = 0 ;
 
-    vpi_printf("Fetching sample %d.\n", (int)i) ;
+    vpi_printf("%s: fetching sample %d;\n", f, (int)i) ;
 
     if ( i == 0 ) {
 
 
 	    if ( sf.read != 0 ) {
 
-		vpi_printf("Seek to %d.\n", (int)sf.seek) ;
+		vpi_printf ("%s:sf_seek(..., %d, ...) =", f, (int)sf.seek) ;
 
 	    	sf.seek = sf_seek (sf.file, sf.seek, SEEK_SET) ;
 
-		vpi_printf("Seek returned %d.\n", (int)sf.seek) ;
+		vpi_printf (">> %d;\n", (int)sf.seek) ;
 
 	    }
 
@@ -187,20 +217,34 @@ sftb_fetch_sample_calltf (char *name)
 		}
 
 
-	    } else { vpi_printf("Seek error!\n") ; return -1 ; }
+	    } else {
+		    vpi_printf ("%s: seek error!\n", f) ;
+		    vpi_control(vpiFinish, 1) ;
+		    return -1 ;
+	    }
     }
 
-    vpi_printf ("Buffered %d sample frames.\n", (int)sf.read) ;
+    vpi_printf ("%s: buffered %d samples;\n", f, (int)sf.read) ;
 
-    s_vpi_value v ;
+    /* parse arguments (which are names of wires)
+     * and, if not 0, and there is a channel for
+     * it then the channel value will passed on
+     * the given wire, if 0, skip the corresponding
+     * channel. If it's a mono sound file and more
+     * then one wire argument is give, write the
+     * same data to all non-zero wires.
+     * If we get four wires and only three channels,
+     * the fourth wire will be receive zeros.
+    */
 
-    v.format = vpiIntVal ;
+
+    tb.format = vpiIntVal ;
  
-    v.value.integer = sf.data[i] ;
+    tb.value.integer = sf.data[i] ;
 
-    vpi_put_value (sf.func, &v, NULL, vpiNoDelay) ;
+    vpi_put_value (sf.call, &tb, NULL, vpiNoDelay) ;
 
-    vpi_printf("Sample value is %d.\n", v.value.integer) ;
+    vpi_printf("%s: sample value is %d;\n", f, tb.value.integer) ;
 
     i = (i + sf.info.channels) % sf.read ;
 
@@ -208,7 +252,7 @@ sftb_fetch_sample_calltf (char *name)
 }
 
 static PLI_INT32
-sftb_store_sample_calltf (char *name)
+sftb_store_sample_calltf (char *f)
 {
     vpi_printf("Not implemented (TODO)!\n");
     return 0 ;

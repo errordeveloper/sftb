@@ -1,6 +1,7 @@
 *.vpi
 *.vpp
 *.vvp
+*.vcd
 *.o
 
 *.sw?

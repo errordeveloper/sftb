@@ -1,6 +1,7 @@
 module audio_output(output reg [31:0] x, input c);
 
-initial $sftb_open_input_file;
+// perhaps eventually we can improve this and open a playlist
+initial $sftb_open_input_file("./data/mono16@22050.f7620.aif");
 
 always @(posedge c)
  // x <= $sftb_fetch_sample;
@@ -21,7 +22,7 @@ initial begin
 $dumpvars;
 
 repeat (100000) begin
-	$display($sftb_fetch_sample);
+	$sftb_fetch_sample;
 	#10 clock <= 1'b0;
 	#10 clock <= 1'b1;
 end
