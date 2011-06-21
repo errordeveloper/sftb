@@ -10,12 +10,18 @@
 /* Limit to mono files to start with */
 #define		MAX_CHAN	1
 
+/* Default file name */
+#define		DEF_FILE	"/dev/zero" // "./data/mono16@22050.f7620.aif"
+
 /* There should be one sftb_s struc, but keep it simple for now! */
 
 typedef struct {
-SNDFILE	       *file;	// file descriptor
+SNDFILE *	file;	// file descriptor
 SF_INFO		info;	// file metadata
-vpiHandle       name;	// file path argument
+union {
+vpiHandle       handle;	// file path volatile argument
+const char *	string;
+} name;
 sf_count_t	seek;	// next offset in frames
 sf_count_t	read;	// current buffer lenght
 vpiHandle	call;
@@ -23,6 +29,7 @@ vpiHandle	scan;
 vpiHandle	wire[MAX_CHAN];
 int		data[MAX_SIZE];
 } s_sftb_misc ;
+
 
 
 static s_sftb_misc 	sf ;
@@ -102,40 +109,54 @@ static PLI_INT32
 sftb_open_input_file_calltf(char *f)
 {
 
-    //sf.name = "./data/mono16@22050.f7620.aif" ;
 
     sf.call = vpi_handle (vpiSysTfCall, NULL);
     sf.scan = vpi_iterate (vpiArgument, sf.call);
 
-    sf.name = vpi_scan (sf.scan) ;
+  if (sf.scan == NULL) {
+	
+	sf.name.string = DEF_FILE ;
 
-    if ( sf.name == 0 ) {
+	vpi_printf ("%s: opening default file '%s'.\n", f, sf.name.string) ;
+
+  } else {
+
+    sf.name.handle = vpi_scan (sf.scan) ;
+
+    /* It looks like this is newer the case!
+    * if ( sf.name.handle == 0 ) {
 	vpi_printf ("%s: first parameter is missing.\n", f) ;
 	vpi_control(vpiFinish, 1) ;
 
-    } else {
-	    switch(vpi_get(vpiType, sf.name)) {
+    * } else { */
+    
+	    switch(vpi_get(vpiType, sf.name.handle)) {
 
 	    case vpiConstant:
 	    case vpiStringConst:
-	        break;
+	        break;		/* This would be a signal or something */
 	    default:
 		vpi_printf ("%s: first parameter must be a string.\n", f) ;
 		vpi_control(vpiFinish, 1) ;
 		return -1 ;
 	    break;
 	    }
-    }
+    /* } */
 
     vpi_free_object (sf.scan) ;
 
     tb.format = vpiStringVal;
-    vpi_get_value (sf.name, &tb) ;
+    vpi_get_value (sf.name.handle, &tb) ;
+    vpi_free_object (sf.name.handle) ;
+    sf.name.string = tb.value.str ;
 
-    if ( !( sf.file = sf_open (tb.value.str, SFM_READ, &(sf.info)) ) ) {
 
-	vpi_printf ("%s: not able to open input file %s.\n",
-		     f, tb.value.str) ;
+  }
+
+    if ( !( sf.file = sf_open (sf.name.string, SFM_READ, &(sf.info)) ) ) {
+
+	vpi_printf ("%s: not able to open input file '%s'.\n",
+		     f, sf.name.string) ;
 	vpi_control(vpiFinish, 1) ;
 	return  1 ;
     }
@@ -148,7 +169,7 @@ sftb_open_input_file_calltf(char *f)
 	return  1 ;
     }
 
-    vpi_printf("%s: %s\n", f, tb.value.str) ;
+    vpi_printf("%s: openden '%s'.\n", f, sf.name.string) ;
     vpi_printf("%s: the lenght of this audio file is %d frames.\n",
 	       f, (int)sf.info.frames) ;
 
@@ -238,6 +259,7 @@ sftb_fetch_sample_calltf (char *f)
      * the fourth wire will be receive zeros.
     */
 
+    /*
     sf.call = vpi_handle (vpiSysTfCall, 0) ;
     sf.scan = vpi_iterate (sf.call) ;
 
@@ -253,6 +275,7 @@ sftb_fetch_sample_calltf (char *f)
 	       //// TODO !!!!
 
     }
+    */
 
     tb.format = vpiIntVal ;
  
