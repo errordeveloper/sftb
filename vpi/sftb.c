@@ -8,7 +8,7 @@
 # define		MAX_SIZE	4096
 
 /* Limit to mono files to start with */
-# define		MAX_CHAN	1
+# define		MAX_CHAN	4
 
 /* Default file name */
 # define		DEF_FILE	"/dev/zero" // "./data/mono16@22050.f7620.aif"
@@ -137,10 +137,9 @@ sftb_open_input_file_calltf(char *func)
 
   sf.exit = sf.seek = 0 ;
 
-  sf.call = vpi_handle (vpiSysTfCall, NULL);
-  sf.scan = vpi_iterate (vpiArgument, sf.call);
+  sf.call = vpi_handle (vpiSysTfCall, NULL) ;
 
-  if (sf.scan != NULL) {
+  if ( NULL !=( sf.scan = vpi_iterate (vpiArgument, sf.call) ) ) {
 	
     sf.name.handle = vpi_scan (sf.scan) ;
 
@@ -283,23 +282,28 @@ sftb_fetch_sample_calltf (char *func)
      * the fourth wire will be receive zeros.
     */
 
-    /*
+
     sf.call = vpi_handle (vpiSysTfCall, 0) ;
-    sf.scan = vpi_iterate (sf.call) ;
-
-    for(int k = 0; k < MAX_CHAN; k++) {
     
-       sf.wire[k] = vpi_scan (sf.scan) ;
+    if ( NULL ==( sf.scan = vpi_iterate (vpiArgument, sf.call) ) )
+    {
+      PRINT ("zero parameters supplied.\n") ;
+      vpi_free_object (sf.call) ;
+      vpi_control (vpiFinish, 1) ; 
+      return 1; }
 
-       if ( sf.wire[k] == 0 ) break ;
+    for (int k = 0; k < MAX_CHAN; k++) {
 
+    PRINT("expecting wire %d.\n", k) ;
 
-       if ( sf.wire[k] != vpiReg ) {
+    if ( NULL != ( sf.wire[k] = vpi_scan (sf.scan) ) ) {
 
-	       //// TODO !!!!
+    PRINT("it's %d\n", vpi_get(vpiType, sf.wire[k])) ; }
 
+    /* TODO: invistegate the types :) */
+    
     }
-    */
+
 
     tb.format = vpiIntVal ;
  
@@ -307,7 +311,7 @@ sftb_fetch_sample_calltf (char *func)
 
     vpi_put_value (sf.call, &tb, NULL, vpiNoDelay) ;
 
-    PRINT ("sample value is %d;\n", tb.value.integer) ;
+    //PRINT ("sample value is %d;\n", tb.value.integer) ;
 
     i = (i + sf.info.channels) % sf.read ;
 

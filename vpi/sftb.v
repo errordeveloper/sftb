@@ -11,7 +11,7 @@ endmodule
 
 module audio_output_test;
 
-wire [31:0] audio_data;
+wire signed [31:0] audio_data;
 reg clock;
 
 audio_output audio_output_device ( .c(clock), .x(audio_data) );
@@ -22,7 +22,7 @@ initial begin
 $dumpvars;
 
 repeat (100000) begin
-	$sftb_fetch_sample;
+	$sftb_fetch_sample(audio_data, clock);
 	#10 clock <= 1'b0;
 	#10 clock <= 1'b1;
 end
