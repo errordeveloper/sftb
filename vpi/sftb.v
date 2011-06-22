@@ -1,7 +1,7 @@
 module audio_output(output reg [31:0] x, input c);
 
 // perhaps eventually we can improve this and open a playlist
-initial $sftb_open_input_file("./data/mono16@22050.f7620.aif");
+initial $sftb_open_input_file; //("./data/mono16@22050.f7620.aif");
 
 always @(posedge c)
  // x <= $sftb_fetch_sample;
