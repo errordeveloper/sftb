@@ -1,21 +1,22 @@
 # include	<stdio.h>
-# include	<malloc.h>
+//# include	<malloc.h>
 
 # include	<vpi_user.h>
 # include	<sndfile.h>
 
 /* This will be the length of the buffer used to hold frames. */
-#define		MAX_SIZE	4096
+# define		MAX_SIZE	4096
 
 /* Limit to mono files to start with */
-#define		MAX_CHAN	1
+# define		MAX_CHAN	1
 
 /* Default file name */
-#define		DEF_FILE	"/dev/zero" // "./data/mono16@22050.f7620.aif"
+# define		DEF_FILE	"/dev/zero" // "./data/mono16@22050.f7620.aif"
 
-#define		PRINT(...) vpi_printf("%s: %s", f, __VA_ARGS__)
+# define		PRINT(...) vpi_printf("%s: ",func) ; \
+				   vpi_printf(__VA_ARGS__)
 
-#define		ERROR(n)   sf.exit=n; goto EXIT;
+# define		ERROR(n)   sf.exit = n ; goto EXIT ;
 
 /* There should be one sftb_s struc, but keep it simple for now! */
 
@@ -57,13 +58,15 @@ static s_vpi_value	tb ;
  * vpi_put_value (handle, &v, NULL, vpiNoDelay);
  */
 
-static PLI_INT32 sftb_open_input_file_calltf (char *f) ;
-static PLI_INT32 sftb_open_output_file_calltf (char *f) ;
+static PLI_INT32 sftb_open_input_file_calltf (char *func) ;
+static PLI_INT32 sftb_open_output_file_calltf (char *func) ;
+static PLI_INT32 sftb_close_input_file_calltf (char *func) ;
+static PLI_INT32 sftb_close_output_file_calltf (char *func) ;
 
 /* Fetch Audio Data from SNDFILE */
-static PLI_INT32 sftb_fetch_sample_calltf (char *f) ;
+static PLI_INT32 sftb_fetch_sample_calltf (char *func) ;
 /* Store Audio Data into SNDFILE */
-static PLI_INT32 sftb_store_sample_calltf (char *f) ;
+static PLI_INT32 sftb_store_sample_calltf (char *func) ;
 
 void sftb_register()
 {
@@ -84,6 +87,24 @@ void sftb_register()
       tf_data.compiletf = 0;
       tf_data.sizetf    = 0;
       tf_data.user_data = "$sftb_open_output_file";
+
+      vpi_register_systf(&tf_data);
+
+      tf_data.type      = vpiSysTask;
+      tf_data.tfname    = "$sftb_close_input_file";
+      tf_data.calltf    = sftb_close_input_file_calltf;
+      tf_data.compiletf = 0;
+      tf_data.sizetf    = 0;
+      tf_data.user_data = "$sftb_close_input_file";
+
+      vpi_register_systf(&tf_data);
+
+      tf_data.type      = vpiSysTask;
+      tf_data.tfname    = "$sftb_close_output_file";
+      tf_data.calltf    = sftb_close_output_file_calltf;
+      tf_data.compiletf = 0;
+      tf_data.sizetf    = 0;
+      tf_data.user_data = "$sftb_close_output_file";
 
       vpi_register_systf(&tf_data);
 
@@ -109,7 +130,7 @@ void sftb_register()
 void (*vlog_startup_routines[])() = { sftb_register, 0 };
 
 static PLI_INT32
-sftb_open_input_file_calltf(char *f)
+sftb_open_input_file_calltf(char *func)
 {
 
 /* Handle the arguments, if none - use DEF_FILE */
@@ -130,7 +151,7 @@ sftb_open_input_file_calltf(char *f)
         break;
 
       default:
-        vpi_printf ("%s: first parameter is not a string.\n", f) ;
+        PRINT ("first parameter is not a string.\n") ;
 	ERROR(1);
     }
 
@@ -145,8 +166,7 @@ sftb_open_input_file_calltf(char *f)
     sf.name.string = DEF_FILE ;
   
     PRINT ("zero parameters supplied.\n") ;
-    PRINT ("using default file name") ;
-    vpi_printf ("'%s'.\n", sf.name.string) ;
+    PRINT ("using default file name '%s'.\n", sf.name.string) ;
 
   }
 
@@ -154,17 +174,17 @@ sftb_open_input_file_calltf(char *f)
 
   if ( !( sf.file = sf_open (sf.name.string, SFM_READ, &(sf.info)) ) )
   {
-    vpi_printf ("%s: cannot open input file '%s'.\n", f, sf.name.string) ;
+    PRINT ("cannot open input file '%s'.\n", sf.name.string) ;
     ERROR(2); }
 
   if (sf.info.channels > MAX_CHAN)
   {
-    vpi_printf ("%s: cannot process %d channel(s).\n", f, (int)sf.info.channels) ;
-    vpi_printf ("%s: my limit is %d channel(s).\n", f, MAX_CHAN) ;
+    PRINT ("cannot process %d channel(s).\n", (int)sf.info.channels) ;
+    PRINT ("my limit is %d channel(s).\n", MAX_CHAN) ;
     ERROR(2); }
 
-  vpi_printf("%s: opened '%s'.\n", f, sf.name.string) ;
-  vpi_printf("%s: this file has %d frames.\n", f, (int)sf.info.frames) ;
+  PRINT ("opened '%s'.\n", sf.name.string) ;
+  PRINT ("this file has %d frames.\n", (int)sf.info.frames) ;
 
   sf.read = sf.seek = 0 ; ERROR(0);
 
@@ -188,7 +208,7 @@ EXIT:
 }
 
 static PLI_INT32
-sftb_close_input_file (char *f)
+sftb_close_input_file_calltf (char *func)
 {
     sf_close (sf.file) ;
     // free (sf.data) ;
@@ -197,14 +217,14 @@ sftb_close_input_file (char *f)
 
 
 static PLI_INT32
-sftb_open_output_file_calltf(char *f)
+sftb_open_output_file_calltf(char *func)
 {
   PRINT ("Not implemented (TODO)!\n") ;
   return 0;
 }
 
 static PLI_INT32
-sftb_close_output_file (char *f)
+sftb_close_output_file_calltf (char *func)
 {
   // sf_close (output_file) ;
   PRINT ("Not implemented (TODO)!\n") ;
@@ -213,18 +233,17 @@ sftb_close_output_file (char *f)
 }
 
 static PLI_INT32
-sftb_fetch_sample_calltf (char *f)
+sftb_fetch_sample_calltf (char *func)
 { 
     static sf_count_t i = 0 ;
 
-    PRINT ("fetching sample") ;
-    vpi_prinf (" %d;\n", (int)i) ;
+    PRINT ("fetching sample %d;\n", (int)i) ;
 
     if ( i == 0 ) {
 
 	    if ( sf.read != 0 ) {
 
-		vpi_printf ("%s:sf_seek(..., %d, ...) =", f, (int)sf.seek) ;
+		PRINT (" :sf_seek(..., %d, ...) =", (int)sf.seek) ;
 
 	    	sf.seek = sf_seek (sf.file, sf.seek, SEEK_SET) ;
 
@@ -236,7 +255,7 @@ sftb_fetch_sample_calltf (char *f)
 
     	    	sf.read = sf_read_int (sf.file, sf.data, MAX_SIZE) ;
 
-		vpi_printf ("%s: buffered %d samples;\n", f, (int)sf.read) ;
+		PRINT ("buffered %d samples;\n", (int)sf.read) ;
 
 		if ( sf.read < MAX_SIZE ) {
 			sf.seek = 0 ;
@@ -246,7 +265,7 @@ sftb_fetch_sample_calltf (char *f)
 
 
 	    } else {
-		    vpi_printf ("%s: seek error!\n", f) ;
+		    PRINT ("seek error!\n") ;
 		    vpi_control(vpiFinish, 1) ;
 		    return -1 ;
 	    }
@@ -288,7 +307,7 @@ sftb_fetch_sample_calltf (char *f)
 
     vpi_put_value (sf.call, &tb, NULL, vpiNoDelay) ;
 
-    vpi_printf("%s: sample value is %d;\n", f, tb.value.integer) ;
+    PRINT ("sample value is %d;\n", tb.value.integer) ;
 
     i = (i + sf.info.channels) % sf.read ;
 
@@ -296,9 +315,9 @@ sftb_fetch_sample_calltf (char *f)
 }
 
 static PLI_INT32
-sftb_store_sample_calltf (char *f)
+sftb_store_sample_calltf (char *func)
 {
-    vpi_printf("%s: Not implemented (TODO)!\n", f);
+    PRINT ("Not implemented (TODO)!\n") ;
     return 0 ;
 }
 
