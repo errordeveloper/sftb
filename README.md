@@ -22,14 +22,16 @@ to use this tesbench. Other Verilog simulator to be added.
 
 `cd ./sftb.git/vpi/; make`
 
+`gtkwave dump.vcd`
+
 You will probably need to edit `sftb.v` to provide the
 filename or place a file `/tmp/sunday.aiff` and it will
 run fine. There quite a few things still to fix, I hope
 to get it brushed-up very soon!
 
-![Screenshow of the results][1]
+![_Screenshow of the results_][1]
 
-[1]: /path/to/img.jpg "Sunday Morning"
+[1]: http://i.stack.imgur.com/mRBAx.png "Sunday Morning"
 
 
 ##To-do:

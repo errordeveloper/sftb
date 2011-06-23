@@ -1,4 +1,7 @@
-# include	<stdio.h>
+# include	"util.h"
+
+//# include	<math.h>
+//# include	<stdio.h>
 //# include	<malloc.h>
 
 # include	<vpi_user.h>
@@ -16,26 +19,6 @@
 /* Default file name */
 # define		DEF_FILE	"/dev/zero" // "./data/mono16@22050.f7620.aif"
 
-# define		PRINT(...) vpi_printf("%s: ",func) ; \
-				   vpi_printf(__VA_ARGS__)
-# define		DBG 0
-
-# if DBG
-# define		DEBUG(...) PRINT(__VA_ARGS__)
-# else
-# define		DEBUG(...)
-# endif
-
-# define		ERROR(n)   sf.exit = n ; goto EXIT ;
-
-#define getb(val, bit) (((val & (1 << bit)) >> bit) == 1)
-#define Cbit(val, bit)  (val = (val & ~(1 << bit)))
-#define Sbit(val, bit)  (val = (val | (1 << bit)))
-
-/* vpiRegArray is not defined in vpi_user.h !!! */
-
-# define vpiRegArray	116
-# define vpiNetArray	114
 
 /* There should be one sftb_s struc, but keep it simple for now! */
 
@@ -75,7 +58,7 @@ vpiHandle	call;
 vpiHandle	scan;
 PLI_INT32	mask;		
 vpiHandle	wire[MAX_CHAN];
-PLI_INT32	data[MAX_SIZE];
+signed int	data[MAX_SIZE];
 union {
 vpiHandle       handle;	// file path argument
 const char *	string;
@@ -292,7 +275,9 @@ sftb_fetch_sample_calltf (char *func)
 
 	    	sf.seek = sf_seek (sf.file, sf.seek, SEEK_SET) ;
 
+		#if DBG
 		vpi_printf (">> %d;\n", (int)sf.seek) ;
+		#endif
 
 	    }
 
@@ -338,7 +323,11 @@ sftb_fetch_sample_calltf (char *func)
     
     tb.format = vpiIntVal ;
  
-    tb.value.integer = sf.data[i] ;
+    DEBUG ("sf[%d] = %d\n", i, sf.data[i]) ;
+
+    tb.value.integer = (getb(sf.mask, 0))*(sf.data[i]) ;
+
+    DEBUG ("tb[%d] = %d\n", i, tb.value.integer) ;
 
     vpi_put_value (sf.wire[0], &tb, NULL, vpiNoDelay) ;
 
@@ -421,7 +410,7 @@ sftb_count_arguments (char *func)
 
   } while ( (k = ((++k)%MAX_CHAN)) ) ;
   /* Srick to MAX_CHAN here, but use sf.info.channels
-   * in the other fethc/store function */
+   * in the other (fetch/store) functions */
 
 #if DBG
   DEBUG ( "the number of wires is %d.\n", k) ;

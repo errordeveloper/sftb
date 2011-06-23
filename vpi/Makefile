@@ -5,11 +5,18 @@
 VERILOG_SIM	?= iverilog -g2005
 VERILOG_VPI	?= iverilog-vpi
 
-VERILOG_VPI_FLAGS = `pkg-config sndfile --libs --cflags`
 
 PROJECT		 = sftb
 PROJECT_SRC	?= $(PROJECT).c $(PROJECT).v
 PROJECT_OUT	?= $(PROJECT).vpp $(PROJECT).vpi
+
+ifndef DEBUG
+${info You can specify DEBUG flag to get verbose output.}
+else
+PROJECT_DBG	 = -DDBG=$(DEBUG)
+endif
+
+VERILOG_VPI_FLAGS = `pkg-config sndfile --libs --cflags` $(PROJECT_DBG)
 
 simul: $(PROJECT_OUT)
 	vvp -M. -m$(PROJECT) $(PROJECT).vpp
