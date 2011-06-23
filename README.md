@@ -31,7 +31,7 @@ to get it brushed-up very soon!
 
 ![_Screenshow of the results_][1]
 
-[1]: http://i.stack.imgur.com/mRBAx.png "Sunday Morning"
+[1]: http://i.stack.imgur.com/ICSz2.png "Sunday Morning"
 
 
 ##To-do:
