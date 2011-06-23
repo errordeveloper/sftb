@@ -17,12 +17,15 @@ reg clock;
 //audio_output audio_output_device ( .c(clock), .x(audio_data) );
 
 
+wire signed [31:0] audio_wire[31:0];
+
 initial begin
 
 $dumpvars;
 
-repeat (100) begin
-	$sftb_fetch_sample(audio_data, clock, clock, clock, clock);
+repeat (10) begin
+	//$sftb_fetch_sample(audio_data, 0, "clock", audio_data[20:15], clock, audio_wire);
+	$sftb_fetch_sample(audio_data, 0, "clock", audio_data, audio_data, audio_wire);
 	#10 clock <= 1'b0;
 	#10 clock <= 1'b1;
 end

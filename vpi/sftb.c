@@ -10,20 +10,32 @@
 /* Limit to mono files to start with */
 # define		MAX_CHAN	32
 
+/* Limit to 32bit integers for now */
+# define		MAX_BITS	8*sizeof(int)
+
 /* Default file name */
 # define		DEF_FILE	"/dev/zero" // "./data/mono16@22050.f7620.aif"
 
 # define		PRINT(...) vpi_printf("%s: ",func) ; \
 				   vpi_printf(__VA_ARGS__)
-# define		DBG 1
+# define		DBG 0
 
+# if DBG
 # define		DEBUG(...) PRINT(__VA_ARGS__)
+# else
+# define		DEBUG(...)
+# endif
 
 # define		ERROR(n)   sf.exit = n ; goto EXIT ;
 
 #define getb(val, bit) (((val & (1 << bit)) >> bit) == 1)
-#define cbit(val, bit)  (val = (val & ~(1 << bit)))
-#define sbit(val, bit)  (val = (val | (1 << bit)))
+#define Cbit(val, bit)  (val = (val & ~(1 << bit)))
+#define Sbit(val, bit)  (val = (val | (1 << bit)))
+
+/* vpiRegArray is not defined in vpi_user.h !!! */
+
+# define vpiRegArray	116
+# define vpiNetArray	114
 
 /* There should be one sftb_s struc, but keep it simple for now! */
 
@@ -48,6 +60,8 @@
  * 	 link // ?
  * 	 mask // bit mask of 32 bits
  * 	 data // the sample buffer
+ * 	 type
+ * 	 size
  * 	}
  * } */
 
@@ -238,7 +252,7 @@ EXIT:
 static PLI_INT32
 sftb_close_input_file_calltf (char *func)
 {
-    PRINT ("Closing input file '%s'", sf.name.string) ;
+    PRINT ("Closing input file '%s'.\n", sf.name.string) ;
     sf_close (sf.file) ;
     // free (sf.data) ;
     return 0 ;
@@ -266,6 +280,7 @@ sftb_fetch_sample_calltf (char *func)
 { 
     static sf_count_t i = 0 ;
     static PLI_INT16 x = 0 ;
+    PLI_INT16 t, s ;
 
     DEBUG ("fetching sample %d;\n", (int)i) ;
 
@@ -315,7 +330,7 @@ sftb_fetch_sample_calltf (char *func)
 
     if ( x == 0 ) {
 
-      if ( NULL ==( x = sftb_count_arguments(func) ) ) {
+      if ( 0 ==( x = sftb_count_arguments(func) ) ) {
         vpi_control(vpiFinish, 1) ;
         return -1; }
     }
@@ -325,7 +340,7 @@ sftb_fetch_sample_calltf (char *func)
  
     tb.value.integer = sf.data[i] ;
 
-    vpi_put_value (sf.wire[0], &tb, sf.call, vpiNoDelay) ;
+    vpi_put_value (sf.wire[0], &tb, NULL, vpiNoDelay) ;
 
     //PRINT ("sample value is %d;\n", tb.value.integer) ;
 
@@ -344,7 +359,7 @@ sftb_store_sample_calltf (char *func)
 static PLI_INT16
 sftb_count_arguments (char *func)
 {
-  static int k, d ;
+  static int k, d, s, t ;
 
   k = sf.mask = 0 ;
 
@@ -357,19 +372,56 @@ sftb_count_arguments (char *func)
 	  vpi_control (vpiFinish, 1) ; 
 	  return 0; }
 
-  do { DEBUG ("expecting wire %d.\n", k) ;
+  do { DEBUG ("expecting argument %d.\n", k) ;
 
 	if ( NULL !=( sf.wire[k] = vpi_scan (sf.scan) ) ) {
 
-	  switch(vpi_get(vpiType, sf.wire[k])) {
-	  default: sbit(sf.mask, k);
+	
+	  t = vpi_get(vpiType, sf.wire[k]) ;
+	  s = vpi_get(vpiSize, sf.wire[k]) ;
+
+          DEBUG ("vpiType of sf.wire[%d] is %d.\n", k, t ) ;
+          DEBUG ("vpiSize of sf.wire[%d] is %d.\n", k, s ) ;
+
+	  /* TODO: implement checking that Net/Reg names are uniq */
+
+	  switch(t) {
+            case vpiNet:
+            if (s==(MAX_BITS))
+		  Sbit(sf.mask, k) ;
+	    else { PRINT ("unsupported size of vpiNet!\n") ;
+		   /*Cbit(sf.mask, k);*/ }
+		  break;
+	    case vpiReg:
+	    if (s==(MAX_BITS))
+		  Sbit(sf.mask, k) ;
+	    else { PRINT ("unsupported size of vpiNet!\n") ;
+		   /*Cbit(sf.mask, k);*/ }
+		  break;
+	    case vpiNetArray:
+		  PRINT ("vpiNetArray type is not implemented!\n") ;
+		  /*Cbit(sf.mask, k);*/
+		  break;
+            case vpiRegArray:
+		  PRINT ("vpiRegArray type is not implemented!\n") ;
+		  /*Cbit(sf.mask, k);*/
+		  break;
+	    default:
+		  /*Cbit(sf.mask, k);*/
+		  PRINT ("vpiType %d is not supported!\n", t) ;
+		  break;
           }
 
 	/* TODO: invistegate the types :) */
 
-	} else { break ; }
+	
+	} else { DEBUG ("argument %d is not supplied!\n", k) ;
+	         break ;
+	}
 
   } while ( (k = ((++k)%MAX_CHAN)) ) ;
+  /* Srick to MAX_CHAN here, but use sf.info.channels
+   * in the other fethc/store function */
 
 #if DBG
   DEBUG ( "the number of wires is %d.\n", k) ;
