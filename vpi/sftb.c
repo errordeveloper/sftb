@@ -17,7 +17,7 @@
 # define		MAX_BITS	8*sizeof(int)
 
 /* Default file name */
-# define		DEF_FILE	"/dev/zero" // "./data/mono16@22050.f7620.aif"
+# define		DEF_FILE	"./data/mono16@22050.f7620.aif"
 
 
 /* There should be one sftb_s struc, but keep it simple for now! */
@@ -30,11 +30,11 @@
  * 	 string // filename string
  * 	 system // file descriptor
  * 	 offset // next seek offset
- * 	 buffer // buffered samples
+ * 	 length // buffer length
  * 	}
  *
  * func {
- * 	 exit
+ * 	 flag
  * 	 call
  * 	 scan
  * 	}
@@ -49,20 +49,23 @@
  * } */
 
 typedef struct {
+vpiHandle	call;	// function object
+vpiHandle	scan;	// argument iterator
+PLI_INT16	flag;	// status flag
+
 SNDFILE *	file;	// file descriptor
-SF_INFO		info;	// file metadata
-PLI_INT16	exit;
 sf_count_t	seek;	// next offset in frames
 sf_count_t	read;	// current buffer lenght
-vpiHandle	call;
-vpiHandle	scan;
-PLI_INT32	mask;		
+PLI_INT32	mask;	// next seek offset
+
 vpiHandle	wire[MAX_CHAN];
-signed int	data[MAX_SIZE];
+signed int	data[MAX_SIZE];	// sample buffer
+
 union {
 vpiHandle       handle;	// file path argument
 const char *	string;
-} name ;
+              } name ;
+SF_INFO		info;	// file metadata
 } s_sftb_misc ;
 
 static s_sftb_misc 	sf ;
@@ -166,7 +169,7 @@ sftb_open_input_file_calltf(char *func)
 
 /* Handle the arguments, if none - use DEF_FILE */
 
-  sf.exit = sf.seek = 0 ;
+  sf.flag = sf.seek = 0 ;
 
   sf.call = vpi_handle (vpiSysTfCall, NULL) ;
 
@@ -220,16 +223,16 @@ sftb_open_input_file_calltf(char *func)
 
 EXIT:
 
-    if (sf.exit == 0 || sf.exit == 1) {
+    if (sf.flag == 0 || sf.flag == 1) {
 	vpi_free_object (sf.call) ;
 	vpi_free_object (sf.scan) ;
-    } else if (sf.exit == 2) {
+    } else if (sf.flag == 2) {
 	vpi_free_object (sf.call) ;
     }
 
-   if (sf.exit-1) vpi_control (vpiFinish, 1);
+   if (sf.flag-1) vpi_control (vpiFinish, 1);
 
-   return sf.exit ;
+   return sf.flag ;
 }
 
 static PLI_INT32
@@ -262,8 +265,18 @@ static PLI_INT32
 sftb_fetch_sample_calltf (char *func)
 { 
     static sf_count_t i = 0 ;
-    static PLI_INT16 x = 0 ;
-    PLI_INT16 t, s ;
+    static PLI_INT16 x = 0, h = 0 ;
+
+    PLI_INT16 f = sf.info.channels ;
+
+/* Description of local variebles:
+ * 
+ * x	- output wire count
+ * i	- sample index for current buffer
+ * f	- sample index for current frame
+ * h	- frame helper variable
+ *
+ */
 
     DEBUG ("fetching sample %d;\n", (int)i) ;
 
@@ -318,20 +331,35 @@ sftb_fetch_sample_calltf (char *func)
       if ( 0 ==( x = sftb_count_arguments(func) ) ) {
         vpi_control(vpiFinish, 1) ;
         return -1; }
+
+    /* This also needs to be done only once */
+    tb.format = vpiIntVal ;
+
     }
 
-    
-    tb.format = vpiIntVal ;
+    /* Check x againg sf.info.channels */
+
+    if ( x == sf.info.channels ) {
+      h = sf.info.channels ;
+    } else if ( x > sf.info.channels ) {
+      h = sf.info.channels ;
+    } else if ( x < sf.info.channels ) {
+      h = x ;
+    }
  
-    DEBUG ("sf[%d] = %d\n", i, sf.data[i]) ;
+    /* Need to decide what loop construct to use here */
+
+    /*
+     * => data[i+f] * getb(mask, h) ???
+     */
+
+    //DEBUG ("sf[%d] = %d\n", i, sf.data[i]) ;
 
     tb.value.integer = (getb(sf.mask, 0))*(sf.data[i]) ;
 
-    DEBUG ("tb[%d] = %d\n", i, tb.value.integer) ;
+    //DEBUG ("tb[%d] = %d\n", i, tb.value.integer) ;
 
     vpi_put_value (sf.wire[0], &tb, NULL, vpiNoDelay) ;
-
-    //PRINT ("sample value is %d;\n", tb.value.integer) ;
 
     i = (i + sf.info.channels) % sf.read ;
 
@@ -348,9 +376,18 @@ sftb_store_sample_calltf (char *func)
 static PLI_INT16
 sftb_count_arguments (char *func)
 {
-  static int k, d, s, t ;
+  static int x, d, s, t ;
 
-  k = sf.mask = 0 ;
+  x = sf.mask = 0 ;
+
+/* Description of local variebles:
+ *
+ * x	- wire index
+ * d	- debug index
+ * t	- wire type
+ * s	- wire size
+ *
+ */
 
   sf.call = vpi_handle (vpiSysTfCall, 0) ;
 	
@@ -361,42 +398,42 @@ sftb_count_arguments (char *func)
 	  vpi_control (vpiFinish, 1) ; 
 	  return 0; }
 
-  do { DEBUG ("expecting argument %d.\n", k) ;
+  do { DEBUG ("expecting argument %d.\n", x) ;
 
-	if ( NULL !=( sf.wire[k] = vpi_scan (sf.scan) ) ) {
+	if ( NULL !=( sf.wire[x] = vpi_scan (sf.scan) ) ) {
 
 	
-	  t = vpi_get(vpiType, sf.wire[k]) ;
-	  s = vpi_get(vpiSize, sf.wire[k]) ;
+	  t = vpi_get(vpiType, sf.wire[x]) ;
+	  s = vpi_get(vpiSize, sf.wire[x]) ;
 
-          DEBUG ("vpiType of sf.wire[%d] is %d.\n", k, t ) ;
-          DEBUG ("vpiSize of sf.wire[%d] is %d.\n", k, s ) ;
+          DEBUG ("vpiType of sf.wire[%d] is %d.\n", x, t ) ;
+          DEBUG ("vpiSize of sf.wire[%d] is %d.\n", x, s ) ;
 
 	  /* TODO: implement checking that Net/Reg names are uniq */
 
 	  switch(t) {
             case vpiNet:
             if (s==(MAX_BITS))
-		  Sbit(sf.mask, k) ;
+		  Sbit(sf.mask, x) ;
 	    else { PRINT ("unsupported size of vpiNet!\n") ;
-		   /*Cbit(sf.mask, k);*/ }
+		   /*Cbit(sf.mask, x);*/ }
 		  break;
 	    case vpiReg:
 	    if (s==(MAX_BITS))
-		  Sbit(sf.mask, k) ;
+		  Sbit(sf.mask, x) ;
 	    else { PRINT ("unsupported size of vpiNet!\n") ;
-		   /*Cbit(sf.mask, k);*/ }
+		   /*Cbit(sf.mask, x);*/ }
 		  break;
 	    case vpiNetArray:
 		  PRINT ("vpiNetArray type is not implemented!\n") ;
-		  /*Cbit(sf.mask, k);*/
+		  /*Cbit(sf.mask, x);*/
 		  break;
             case vpiRegArray:
 		  PRINT ("vpiRegArray type is not implemented!\n") ;
-		  /*Cbit(sf.mask, k);*/
+		  /*Cbit(sf.mask, x);*/
 		  break;
 	    default:
-		  /*Cbit(sf.mask, k);*/
+		  /*Cbit(sf.mask, x);*/
 		  PRINT ("vpiType %d is not supported!\n", t) ;
 		  break;
           }
@@ -404,16 +441,16 @@ sftb_count_arguments (char *func)
 	/* TODO: invistegate the types :) */
 
 	
-	} else { DEBUG ("argument %d is not supplied!\n", k) ;
+	} else { DEBUG ("argument %d is not supplied!\n", x) ;
 	         break ;
 	}
 
-  } while ( (k = ((++k)%MAX_CHAN)) ) ;
+  } while ( (x = ((++x)%MAX_CHAN)) ) ;
   /* Srick to MAX_CHAN here, but use sf.info.channels
    * in the other (fetch/store) functions */
 
 #if DBG
-  DEBUG ( "the number of wires is %d.\n", k) ;
+  DEBUG ( "the number of wires is %d.\n", x) ;
   DEBUG ( "sf.mask = 32'b" );
 
   for ( d = 0 ; d < MAX_CHAN ; d++ ) {
@@ -421,6 +458,6 @@ sftb_count_arguments (char *func)
       } vpi_printf ("\n") ;
 #endif
 
-  return k;
+  return x;
 
 }

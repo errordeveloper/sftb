@@ -14,7 +14,7 @@ vpi_printf(__VA_ARGS__)
 # define		DEBUG(...)
 # endif
 
-# define		ERROR(n)   sf.exit = n ; goto EXIT ;
+# define		ERROR(n)   sf.flag = n ; goto EXIT ;
 
 #define getb(val, bit) (((val & (1 << bit)) >> bit) == 1)
 #define Cbit(val, bit)  (val = (val & ~(1 << bit)))
