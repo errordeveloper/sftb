@@ -8,28 +8,60 @@
 # define		MAX_SIZE	4096
 
 /* Limit to mono files to start with */
-# define		MAX_CHAN	4
+# define		MAX_CHAN	32
 
 /* Default file name */
 # define		DEF_FILE	"/dev/zero" // "./data/mono16@22050.f7620.aif"
 
 # define		PRINT(...) vpi_printf("%s: ",func) ; \
 				   vpi_printf(__VA_ARGS__)
+# define		DBG 1
+
+# define		DEBUG(...) PRINT(__VA_ARGS__)
 
 # define		ERROR(n)   sf.exit = n ; goto EXIT ;
 
+#define getb(val, bit) (((val & (1 << bit)) >> bit) == 1)
+#define cbit(val, bit)  (val = (val & ~(1 << bit)))
+#define sbit(val, bit)  (val = (val | (1 << bit)))
+
 /* There should be one sftb_s struc, but keep it simple for now! */
+
+/* alternative:
+ * {
+ *
+ * file {
+ * 	 handle // function argument
+ * 	 string // filename string
+ * 	 system // file descriptor
+ * 	 offset // next seek offset
+ * 	 buffer // buffered samples
+ * 	}
+ *
+ * func {
+ * 	 exit
+ * 	 call
+ * 	 scan
+ * 	}
+ *
+ * wire {
+ * 	 link // ?
+ * 	 mask // bit mask of 32 bits
+ * 	 data // the sample buffer
+ * 	}
+ * } */
 
 typedef struct {
 SNDFILE *	file;	// file descriptor
 SF_INFO		info;	// file metadata
-short		exit;
+PLI_INT16	exit;
 sf_count_t	seek;	// next offset in frames
 sf_count_t	read;	// current buffer lenght
 vpiHandle	call;
 vpiHandle	scan;
+PLI_INT32	mask;		
 vpiHandle	wire[MAX_CHAN];
-int		data[MAX_SIZE];
+PLI_INT32	data[MAX_SIZE];
 union {
 vpiHandle       handle;	// file path argument
 const char *	string;
@@ -67,6 +99,8 @@ static PLI_INT32 sftb_close_output_file_calltf (char *func) ;
 static PLI_INT32 sftb_fetch_sample_calltf (char *func) ;
 /* Store Audio Data into SNDFILE */
 static PLI_INT32 sftb_store_sample_calltf (char *func) ;
+
+static PLI_INT16 sftb_count_arguments (char *func);
 
 void sftb_register()
 {
@@ -185,23 +219,18 @@ sftb_open_input_file_calltf(char *func)
   PRINT ("opened '%s'.\n", sf.name.string) ;
   PRINT ("this file has %d frames.\n", (int)sf.info.frames) ;
 
-  sf.read = sf.seek = 0 ; ERROR(0);
+  sf.read = sf.seek = 0 ; ERROR(1);
 
 EXIT:
 
-    switch (sf.exit)
-    {
-	case 0:
+    if (sf.exit == 0 || sf.exit == 1) {
 	vpi_free_object (sf.call) ;
 	vpi_free_object (sf.scan) ;
-	case 1:
-	vpi_free_object (sf.call) ;
-	vpi_free_object (sf.scan) ;
-	case 2:
+    } else if (sf.exit == 2) {
 	vpi_free_object (sf.call) ;
     }
 
-   if (sf.exit) vpi_control (vpiFinish, 1);
+   if (sf.exit-1) vpi_control (vpiFinish, 1);
 
    return sf.exit ;
 }
@@ -209,6 +238,7 @@ EXIT:
 static PLI_INT32
 sftb_close_input_file_calltf (char *func)
 {
+    PRINT ("Closing input file '%s'", sf.name.string) ;
     sf_close (sf.file) ;
     // free (sf.data) ;
     return 0 ;
@@ -235,14 +265,15 @@ static PLI_INT32
 sftb_fetch_sample_calltf (char *func)
 { 
     static sf_count_t i = 0 ;
+    static PLI_INT16 x = 0 ;
 
-    PRINT ("fetching sample %d;\n", (int)i) ;
+    DEBUG ("fetching sample %d;\n", (int)i) ;
 
     if ( i == 0 ) {
 
 	    if ( sf.read != 0 ) {
 
-		PRINT (" :sf_seek(..., %d, ...) =", (int)sf.seek) ;
+		DEBUG (" :sf_seek(..., %d, ...) =", (int)sf.seek) ;
 
 	    	sf.seek = sf_seek (sf.file, sf.seek, SEEK_SET) ;
 
@@ -254,7 +285,7 @@ sftb_fetch_sample_calltf (char *func)
 
     	    	sf.read = sf_read_int (sf.file, sf.data, MAX_SIZE) ;
 
-		PRINT ("buffered %d samples;\n", (int)sf.read) ;
+		DEBUG ("buffered %d samples;\n", (int)sf.read) ;
 
 		if ( sf.read < MAX_SIZE ) {
 			sf.seek = 0 ;
@@ -282,34 +313,19 @@ sftb_fetch_sample_calltf (char *func)
      * the fourth wire will be receive zeros.
     */
 
+    if ( x == 0 ) {
 
-    sf.call = vpi_handle (vpiSysTfCall, 0) ;
-    
-    if ( NULL ==( sf.scan = vpi_iterate (vpiArgument, sf.call) ) )
-    {
-      PRINT ("zero parameters supplied.\n") ;
-      vpi_free_object (sf.call) ;
-      vpi_control (vpiFinish, 1) ; 
-      return 1; }
-
-    for (int k = 0; k < MAX_CHAN; k++) {
-
-    PRINT("expecting wire %d.\n", k) ;
-
-    if ( NULL != ( sf.wire[k] = vpi_scan (sf.scan) ) ) {
-
-    PRINT("it's %d\n", vpi_get(vpiType, sf.wire[k])) ; }
-
-    /* TODO: invistegate the types :) */
-    
+      if ( NULL ==( x = sftb_count_arguments(func) ) ) {
+        vpi_control(vpiFinish, 1) ;
+        return -1; }
     }
 
-
+    
     tb.format = vpiIntVal ;
  
     tb.value.integer = sf.data[i] ;
 
-    vpi_put_value (sf.call, &tb, NULL, vpiNoDelay) ;
+    vpi_put_value (sf.wire[0], &tb, sf.call, vpiNoDelay) ;
 
     //PRINT ("sample value is %d;\n", tb.value.integer) ;
 
@@ -325,4 +341,45 @@ sftb_store_sample_calltf (char *func)
     return 0 ;
 }
 
+static PLI_INT16
+sftb_count_arguments (char *func)
+{
+  static int k, d ;
 
+  k = sf.mask = 0 ;
+
+  sf.call = vpi_handle (vpiSysTfCall, 0) ;
+	
+  if ( NULL ==( sf.scan = vpi_iterate (vpiArgument, sf.call) ) )
+	{
+	  PRINT ("zero parameters supplied.\n") ;
+	  vpi_free_object (sf.call) ;
+	  vpi_control (vpiFinish, 1) ; 
+	  return 0; }
+
+  do { DEBUG ("expecting wire %d.\n", k) ;
+
+	if ( NULL !=( sf.wire[k] = vpi_scan (sf.scan) ) ) {
+
+	  switch(vpi_get(vpiType, sf.wire[k])) {
+	  default: sbit(sf.mask, k);
+          }
+
+	/* TODO: invistegate the types :) */
+
+	} else { break ; }
+
+  } while ( (k = ((++k)%MAX_CHAN)) ) ;
+
+#if DBG
+  DEBUG ( "the number of wires is %d.\n", k) ;
+  DEBUG ( "sf.mask = 32'b" );
+
+  for ( d = 0 ; d < MAX_CHAN ; d++ ) {
+	vpi_printf ("%d", getb(sf.mask, d)) ;
+      } vpi_printf ("\n") ;
+#endif
+
+  return k;
+
+}

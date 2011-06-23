@@ -22,6 +22,8 @@ build: $(PROJECT_SRC)
 
 $(PROJECT_OUT): build
 
+check:
+	$(VERILOG_VPI) --cflags
 
 clean:
 	rm -v -f $(PROJECT_OUT)
