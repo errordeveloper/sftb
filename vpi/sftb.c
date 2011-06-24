@@ -169,7 +169,8 @@ sftb_open_input_file_calltf(char *func)
 
 /* Handle the arguments, if none - use DEF_FILE */
 
-  sf.flag = sf.seek = 0 ;
+  sf.flag = 1 ;
+  sf.seek = 0 ;
 
   sf.call = vpi_handle (vpiSysTfCall, NULL) ;
 
@@ -214,23 +215,20 @@ sftb_open_input_file_calltf(char *func)
   {
     PRINT ("cannot process %d channel(s).\n", (int)sf.info.channels) ;
     PRINT ("my limit is %d channel(s).\n", MAX_CHAN) ;
-    ERROR(2); }
+    ERROR(3); }
 
   PRINT ("opened '%s'.\n", sf.name.string) ;
   PRINT ("this file has %d frames.\n", (int)sf.info.frames) ;
 
-  sf.read = sf.seek = 0 ; ERROR(1);
+  sf.read = sf.seek = 0 ; ERROR(0) ;
 
 EXIT:
 
-    if (sf.flag == 0 || sf.flag == 1) {
-	vpi_free_object (sf.call) ;
-	vpi_free_object (sf.scan) ;
-    } else if (sf.flag == 2) {
-	vpi_free_object (sf.call) ;
-    }
+   if (sf.scan != NULL) vpi_free_object(sf.scan) ;
 
-   if (sf.flag-1) vpi_control (vpiFinish, 1);
+   vpi_free_object (sf.call) ;
+
+   if (sf.flag) vpi_control (vpiFinish, 1) ;
 
    return sf.flag ;
 }
