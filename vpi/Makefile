@@ -44,6 +44,27 @@ VERILOG_VPI_FLAGS = `pkg-config sndfile --libs --cflags` $(PROJECT_DEF)
 # front-end target is 'file.vcd', if either PROJECT_DEF or VERILOG_DEF
 # has changed, the vpi and vpp files will be rebuilt.
 
+default:
+	make $(PROJECT).vcd CYCLES=20 DEBUG=0
+
+compile:
+	make $(PROJECT).vpi
+
+install: compile
+ifndef INSTALL_LIB
+	${error Need to define INSTALL_LIB path to install VPI module!}
+else
+	cp $(PROJECT).vpi $(INSTALL_LIB)
+endif
+
+#stamped:
+#	make OUTPUT=sftb-`date +%d%m%y-%H%M`.vcd
+
+#%.new:
+#	cp $(PROJECT).v $(@:.new=.v)
+#	ln $(PROJECT).c $(@:.new=.c)
+#	vim $(@:.new=.v)
+
 depends:
 	@mkdir depends
 
@@ -52,6 +73,7 @@ ifdef DEBUG_MESSAGE
 	${info $(DEBUG_MESSAGE)}
 endif
 	$(VERILOG_VPI) $(VERILOG_VPI_FLAGS) $<
+	@rm -f $(<:.c=.o)
 	@rm -f depends/$@
 	@make depends/$@
 
@@ -90,7 +112,7 @@ rebuild/%.vpp: %.vpp %.v
 
 %.vcd: %.vpi %.vpp
 	@make rebuild/$*.vpi
-	@make rebuild/$*.vpp
+	@make rebuild/$*.vpp OUTPUT=$(@)
 	$(VERILOG_RUN) -M. -m$(<:.vpi=) $*.vpp
 
 build: $(PROJECT_OUT)

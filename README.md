@@ -20,9 +20,9 @@ to use this tesbench. Other Verilog simulator to be added.
 
 `git clone git://github.com/errordeveloper/sftb sftb.git`
 
-`cd ./sftb.git/vpi/; make`
+`cd ./sftb.git/vpi/; make defualt`
 
-`gtkwave dump.vcd`
+`gtkwave sftb.vcd`
 
 You will probably need to edit `sftb.v` to provide the
 filename or place a file `/tmp/sunday.aiff` and it will
