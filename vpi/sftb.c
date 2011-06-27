@@ -17,7 +17,7 @@
 # define		MAX_BITS	8*sizeof(int)
 
 /* Default file name */
-# define		DEF_FILE	"./data/mono16@22050.f7620.aif"
+# define		DEF_FILE	"../data/mono16@22050.f7620.aif"
 
 
 /* There should be one sftb_s struc, but keep it simple for now! */

@@ -1,0 +1,86 @@
+# iverilog-vpi hello.c
+# iverilog -ohello.vvp hello.v
+# vvp -M. -mhello hello.vvp
+
+VERILOG_SIM	?= iverilog -g2005
+VERILOG_VPI	?= iverilog-vpi
+VERILOG_RUN	?= vvp
+
+DUMP_FORMAT	?= vcd
+
+VPI_NAME ?= sftb
+VPI_PATH ?= ./vpi/
+
+# Testbench-specific macros:
+
+ifdef OUTPUT
+	VERILOG_DEF += -DOUTPUT=\"$(OUTPUT)\"
+endif
+
+ifdef PERIOD
+	VERILOG_DEF += -DPERIOD=$(PERIOD)
+endif
+
+ifdef CYCLES
+	VERILOG_DEF += -DCYCLES=$(CYCLES)
+endif
+
+# Example: make CYCLES=25 PERIOD=1
+
+.SUFFIXES: .v .vpp
+
+# targets 'rebuild/file.vpi' and 'rebuild/file.vpp' are for internal use. 
+# front-end target is 'file.vcd', if either PROJECT_DEF or VERILOG_DEF
+# has changed, the vpi and vpp files will be rebuilt.
+
+#default:
+#	make $(PROJECT).vcd CYCLES=20 DEBUG=0
+#
+#compile:
+#	make $(PROJECT).vpi
+
+#%.new:
+#	cp $(PROJECT).v $(@:.new=.v)
+#	ln $(PROJECT).c $(@:.new=.c)
+#	vim $(@:.new=.v)
+
+.v.vpp:
+	$(VERILOG_SIM) $(VERILOG_DEF) -o$@ $<
+	@make depends/$@
+
+outputs:
+	@mkdir outputs
+
+depends/%.vpp: %.vpp
+	@echo "# `hostname` `date`" >> $<
+	@echo "# Compiled with:" >> $<
+	@echo "# $(VERILOG_DEF)" >> $<
+
+rebuild/%.vpp: %.vpp %.v
+	@tail -n 1 $< | awk '{ \
+		if ( $$0 != "# $(VERILOG_DEF)" ) { \
+		system ("rm -f $<") \
+		system ("make $<" ) } \
+		else { \
+		print ("No need to rebuild $<.") } }'
+
+%.vcd: %.vpp $(VPI_PATH)/$(VPI_NAME).vpi
+	@make rebuild/$< OUTPUT=$(@)
+	$(VERILOG_RUN) -M$(VPI_PATH) -m$(VPI_NAME) $<
+	@make stamped/$(@)
+
+stamped/%.vcd: %.vcd outputs
+	mv $< outputs/$(<:.vcd=).`date +%d%m%y.%H%M%S`.vcd
+
+$(VPI_PATH)/$(VPI_NAME).vpi:
+	cd $(VPI_PATH) ; make clean ;\
+	make $(VPI_NAME).vpi DEBUG=1 && mv $(VPI_NAME).vpi $(VPI_NAME)-debug.vpi ;\
+	make $(VPI_NAME).vpi DEBUG=0
+
+%.sim: %.vpp $(VPI_PATH)/$(VPI_NAME).vpi
+	@make rebuild/$<
+	$(VERILOG_RUN) -M$(VPI_PATH) -m$(VPI_NAME) $<
+
+display/%.(DUMP_FORMAT): %.sim
+	gtkwave $@
+

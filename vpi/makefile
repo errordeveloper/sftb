@@ -8,8 +8,8 @@ VERILOG_RUN	?= vvp
 
 
 PROJECT		 = sftb
-PROJECT_SRC	?= $(PROJECT).c $(PROJECT).v
-PROJECT_OUT	?= $(PROJECT).vpp $(PROJECT).vpi
+PROJECT_SRC	+= $(PROJECT).c $(PROJECT).v
+PROJECT_OUT	+= $(PROJECT).vpp $(PROJECT).vpi $(PROJECT)-debug.vpi $(PROJECT).vcd
 
 # C pre-processor macros:
 
