@@ -9,10 +9,7 @@ VERILOG_RUN	?= vvp
 
 PROJECT		 = sftb
 PROJECT_SRC	?= $(PROJECT).c $(PROJECT).v
-PROJECT_OUT	?= $(PROJECT).vpp $(PROJECT).vpi $(PROJECT).cpp
-
-## C-related macros will be appended to $(PROJECT).cpp,
-## while the Verilog macros are going to the vpp file.
+PROJECT_OUT	?= $(PROJECT).vpp $(PROJECT).vpi
 
 # C pre-processor macros:
 
@@ -43,39 +40,57 @@ VERILOG_VPI_FLAGS = `pkg-config sndfile --libs --cflags` $(PROJECT_DEF)
 
 .SUFFIXES: .c .v .vpp .vpi
 
+# targets 'rebuild/file.vpi' and 'rebuild/file.vpp' are for internal use. 
+# front-end target is 'file.vcd', if either PROJECT_DEF or VERILOG_DEF
+# has changed, the vpi and vpp files will be rebuilt.
+
+depends:
+	@mkdir depends
+
 .c.vpi:
 ifdef DEBUG_MESSAGE
 	${info $(DEBUG_MESSAGE)}
 endif
 	$(VERILOG_VPI) $(VERILOG_VPI_FLAGS) $<
-	@echo "# `hostname` `date`" > $<pp
-	@echo "# Compiled with:" >> $<pp
-	@echo "# $(PROJECT_DEF)" >> $<pp
+	@rm -f depends/$@
+	@make depends/$@
 
 .v.vpp:
 	$(VERILOG_SIM) $(VERILOG_DEF) -o$@ $<
-	@echo "# `hostname` `date`" >> $@
+	@rm -f depends/$@
+	@make depends/$@
+
+
+depends/%.vpi: depends
+	@echo "# `hostname` `date`" > $@
+	@echo "# Compiled with:" >> $@
+	@echo "# $(PROJECT_DEF)" >> $@
+
+depends/%.vpp: depends
+	@echo "# `hostname` `date`" > $@
 	@echo "# Compiled with:" >> $@
 	@echo "# $(VERILOG_DEF)" >> $@
 
-%.rebuild_vpi: %.vpi %.c %.cpp
-	@tail -n 1 $*.cpp | awk '{ \
+rebuild/%.vpi: %.vpi %.c
+	@tail -n 1 depends/$< | awk '{ \
 		if ( $$0 != "# $(PROJECT_DEF)" ) { \
 		system ("rm -f $<") \
 		system ("make $<" ) } \
 		else { \
 		print ("No need to rebuild $<.") } }'
 
-%.rebuild_vpp: %.vpp %.v
-	@tail -n 1 $< | awk '{ \
+rebuild/%.vpp: %.vpp %.v
+	@tail -n 1 depends/$< | awk '{ \
 		if ( $$0 != "# $(VERILOG_DEF)" ) { \
 		system ("rm -f $<") \
 		system ("make $<" ) } \
 		else { \
 		print ("No need to rebuild $<.") } }'
 
+
 %.vcd: %.vpi %.vpp
-	@make $(@:.vcd=.rebuild_vpp)
+	@make rebuild/$*.vpi
+	@make rebuild/$*.vpp
 	$(VERILOG_RUN) -M. -m$(<:.vpi=) $*.vpp
 
 build: $(PROJECT_OUT)
@@ -88,3 +103,4 @@ batch: $(PROJECT_SRC)
 
 clean:
 	rm -f $(PROJECT_OUT)
+	rm -rf depends
