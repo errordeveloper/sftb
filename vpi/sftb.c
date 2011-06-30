@@ -56,7 +56,11 @@ PLI_INT16	flag;	// status flag
 SNDFILE *	file;	// file descriptor
 sf_count_t	seek;	// next offset in frames
 sf_count_t	read;	// current buffer lenght
-PLI_INT32	mask;	// next seek offset
+
+struct {
+PLI_INT32	output;
+PLI_INT32	wiring;
+              } mask ;
 
 vpiHandle	wire[MAX_CHAN];
 signed int	data[MAX_SIZE];	// sample buffer
@@ -65,6 +69,7 @@ union {
 vpiHandle       handle;	// file path argument
 const char *	string;
               } name ;
+
 SF_INFO		info;	// file metadata
 } s_sftb_misc ;
 
@@ -100,7 +105,7 @@ static PLI_INT32 sftb_fetch_sample_calltf (char *func) ;
 /* Store Audio Data into SNDFILE */
 static PLI_INT32 sftb_store_sample_calltf (char *func) ;
 
-static PLI_INT16 sftb_count_arguments (char *func);
+static PLI_INT16 sftb_wiring (char *func);
 
 void sftb_register()
 {
@@ -262,106 +267,118 @@ sftb_close_output_file_calltf (char *func)
 static PLI_INT32
 sftb_fetch_sample_calltf (char *func)
 { 
-    static sf_count_t i = 0 ;
-    static PLI_INT16 x = 0, h = 0 ;
-
-    PLI_INT16 f = sf.info.channels ;
+  static sf_count_t i = 0 ;
+  static PLI_INT16 f, w, x = 0 ;
 
 /* Description of local variebles:
  * 
  * x	- output wire count
  * i	- sample index for current buffer
  * f	- sample index for current frame
- * h	- frame helper variable
+ * w	- wiring helper 
  *
  */
 
-    DEBUG ("fetching sample %d;\n", (int)i) ;
+  DEBUG ("fetching frame %d;\n", (int)i) ;
 
-    if ( i == 0 ) {
+  if ( i == 0 ) {
 
-	    if ( sf.read != 0 ) {
+    if ( sf.read != 0 ) {
 
-		DEBUG (" :sf_seek(..., %d, ...) =", (int)sf.seek) ;
+      DEBUG (" :sf_seek(..., %d, ...) =", (int)sf.seek) ;
 
-	    	sf.seek = sf_seek (sf.file, sf.seek, SEEK_SET) ;
+      sf.seek = sf_seek (sf.file, sf.seek, SEEK_SET) ;
 
-		#if DBG
-		vpi_printf (">> %d;\n", (int)sf.seek) ;
-		#endif
+      #if DBG
+      vpi_printf (">> %d;\n", (int)sf.seek) ;
+      #endif
 
-	    }
-
-	    if ( sf.seek != -1 ) {
-
-    	    	sf.read = sf_read_int (sf.file, sf.data, MAX_SIZE) ;
-
-		DEBUG ("buffered %d samples;\n", (int)sf.read) ;
-
-		if ( sf.read < MAX_SIZE ) {
-			sf.seek = 0 ;
-		} else {
-			sf.seek += ( sf.read / sf.info.channels ) ;
-		}
-
-
-	    } else {
-		    PRINT ("seek error!\n") ;
-		    vpi_control(vpiFinish, 1) ;
-		    return -1 ;
-	    }
     }
 
+    if ( sf.seek != -1 ) {
 
-    /* parse arguments (which are names of wires)
-     * and, if not 0, and there is a channel for
-     * it then the channel value will passed on
-     * the given wire, if 0, skip the corresponding
-     * channel. If it's a mono sound file and more
-     * then one wire argument is give, write the
-     * same data to all non-zero wires.
-     * If we get four wires and only three channels,
-     * the fourth wire will be receive zeros.
-    */
+      sf.read = sf_read_int (sf.file, sf.data, MAX_SIZE) ;
 
-    if ( x == 0 ) {
+      DEBUG ("buffered %d samples;\n", (int)sf.read) ;
 
-      if ( 0 ==( x = sftb_count_arguments(func) ) ) {
-        vpi_control(vpiFinish, 1) ;
-        return -1; }
+      if ( sf.read < MAX_SIZE ) {
+      	sf.seek = 0 ;
+      } else {
+      	sf.seek += ( sf.read / sf.info.channels ) ;
+      }
 
-    /* This also needs to be done only once */
+    } else {
+      	    PRINT ("seek error!\n") ;
+      	    vpi_control(vpiFinish, 1) ;
+      	    return -1 ;
+    }
+  }
+
+
+  /* parse arguments (which are names of wires)
+   * and, if not 0, and there is a channel for
+   * it then the channel value will passed on
+   * the given wire, if 0, skip the corresponding
+   * channel. If it's a mono sound file and more
+   * then one wire argument is give, write the
+   * same data to all non-zero wires.
+   * If we get four wires and only three channels,
+   * the fourth wire will be receive zeros.
+  */
+
+  /* This needs to be done only once */
+
+  if ( x == 0 ) {
+
+    if ( 0 ==( x = sftb_wiring (func) ) ) {
+      vpi_control(vpiFinish, 1) ;
+      return -1; }
+
+    /* Set the data type to be passed to the simulator */
     tb.format = vpiIntVal ;
 
+  }
+
+  /* 
+   * tb.value.integer = (getb(sf.mask.output, f))*(sf.data[i]) ;
+   *
+   * vpi_put_value (sf.wire[0], &tb, NULL, vpiNoDelay) ;
+  */
+
+  for ( f = 0 ; f < x ; f++ ) {
+
+    if ( getb (sf.mask.output, f) ) {
+
+      /* This w will be either 0 or f;
+       * if it's zero:
+       * 	a) we don't have an audio channel for it
+       * 	b) will wirte first (i.e. 0) channel
+       * if it's f:
+       * 	a) there is a channel for it
+       */
+
+      w = f * getb (sf.mask.wiring, f) ;
+
+      /* Set the data value to be passed to the simulator */
+      tb.value.integer = sf.data[i+w] ;
+
+      /* Pass the data to the simulator by handle */
+      vpi_put_value (sf.wire[f], &tb, NULL, vpiNoDelay) ;
+
+      DEBUG ( "writing %d from channel %d to output %d.\n",
+      	tb.value.integer, w, f ) ;
+
     }
 
-    /* Check x againg sf.info.channels */
+    #if DBG
+    else { DEBUG ( "skipping output %d!\n", f ) ; }
+    #endif
 
-    if ( x == sf.info.channels ) {
-      h = sf.info.channels ;
-    } else if ( x > sf.info.channels ) {
-      h = sf.info.channels ;
-    } else if ( x < sf.info.channels ) {
-      h = x ;
-    }
- 
-    /* Need to decide what loop construct to use here */
+  }
 
-    /*
-     * => data[i+f] * getb(mask, h) ???
-     */
+  i = (i + sf.info.channels) % sf.read ;
 
-    //DEBUG ("sf[%d] = %d\n", i, sf.data[i]) ;
-
-    tb.value.integer = (getb(sf.mask, 0))*(sf.data[i]) ;
-
-    //DEBUG ("tb[%d] = %d\n", i, tb.value.integer) ;
-
-    vpi_put_value (sf.wire[0], &tb, NULL, vpiNoDelay) ;
-
-    i = (i + sf.info.channels) % sf.read ;
-
-    return 0 ;
+  return 0 ;
 }
 
 static PLI_INT32
@@ -372,11 +389,13 @@ sftb_store_sample_calltf (char *func)
 }
 
 static PLI_INT16
-sftb_count_arguments (char *func)
+sftb_wiring (char *func)
 {
-  static int x, d, s, t ;
+  static PLI_INT16 d, s, t, x = 0 ;
 
-  x = sf.mask = 0 ;
+  sf.mask.wiring = 0 ;
+
+  sf.mask.output = 0 ;
 
 /* Description of local variebles:
  *
@@ -412,26 +431,26 @@ sftb_count_arguments (char *func)
 	  switch(t) {
             case vpiNet:
             if (s==(MAX_BITS))
-		  Sbit(sf.mask, x) ;
+		  Sbit(sf.mask.output, x) ;
 	    else { PRINT ("unsupported size of vpiNet!\n") ;
-		   /*Cbit(sf.mask, x);*/ }
+		   /*Cbit(sf.mask.output, x);*/ }
 		  break;
 	    case vpiReg:
 	    if (s==(MAX_BITS))
-		  Sbit(sf.mask, x) ;
+		  Sbit(sf.mask.output, x) ;
 	    else { PRINT ("unsupported size of vpiNet!\n") ;
-		   /*Cbit(sf.mask, x);*/ }
+		   /*Cbit(sf.mask.output, x);*/ }
 		  break;
 	    case vpiNetArray:
 		  PRINT ("vpiNetArray type is not implemented!\n") ;
-		  /*Cbit(sf.mask, x);*/
+		  /*Cbit(sf.mask.output, x);*/
 		  break;
             case vpiRegArray:
 		  PRINT ("vpiRegArray type is not implemented!\n") ;
-		  /*Cbit(sf.mask, x);*/
+		  /*Cbit(sf.mask.output, x);*/
 		  break;
 	    default:
-		  /*Cbit(sf.mask, x);*/
+		  /*Cbit(sf.mask.output, x);*/
 		  PRINT ("vpiType %d is not supported!\n", t) ;
 		  break;
           }
@@ -444,15 +463,20 @@ sftb_count_arguments (char *func)
 	}
 
   } while ( (x = ((++x)%MAX_CHAN)) ) ;
-  /* Srick to MAX_CHAN here, but use sf.info.channels
-   * in the other (fetch/store) functions */
+
+
+  sf.mask.wiring = ( ( 1 << sf.info.channels ) -1 ) ;
+
 
 #if DBG
   DEBUG ( "the number of wires is %d.\n", x) ;
-  DEBUG ( "sf.mask = 32'b" );
-
+  DEBUG ( "sf.mask.output = 32'b" );
   for ( d = 0 ; d < MAX_CHAN ; d++ ) {
-	vpi_printf ("%d", getb(sf.mask, d)) ;
+	vpi_printf ("%d", getb(sf.mask.output, d)) ;
+      } vpi_printf ("\n") ;
+  DEBUG ( "sf.mask.wiring = 32'b" );
+  for ( d = 0 ; d < MAX_CHAN ; d++ ) {
+        vpi_printf ("%d", getb(sf.mask.wiring, d)) ;
       } vpi_printf ("\n") ;
 #endif
 

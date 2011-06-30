@@ -24,18 +24,24 @@ reg clock;
 
 audio_output audio_output_device ( .clock(clock), .audio(audio) );
 
+wire signed [31:0] test1;
+wire signed [31:0] test2;
+wire signed [31:0] test3;
+wire signed [31:0] test4;
+
 initial begin
 
 // perhaps eventually we can improve this and open a playlist
-//initial $sftb_open_input_file("/tmp/sunday.aiff");
-//initial $sftb_open_input_file("./data/mono16@22050.f7620.aif");
-$sftb_open_input_file;
+$sftb_open_input_file("/tmp/sunday.aiff");
+//$sftb_open_input_file("./data/mono16@22050.f7620.aif");
+//$sftb_open_input_file;
 
 $dumpfile(`OUTPUT);
 $dumpvars;
 
 repeat (`CYCLES) begin
-	$sftb_fetch_sample(audio);
+	$sftb_fetch_sample(audio, test1, test2);
+	//$sftb_fetch_sample(audio, 0, test1, test2, clock, test3, test4, 0);
 	#(`PERIOD/2) clock <= 1'b0;
 	#(`PERIOD/2) clock <= 1'b1;
 end
