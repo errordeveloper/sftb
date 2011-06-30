@@ -58,8 +58,9 @@ sf_count_t	seek;	// next offset in frames
 sf_count_t	read;	// current buffer lenght
 
 struct {
-PLI_INT32	output;
-PLI_INT32	wiring;
+PLI_INT32	output;	// bit mask of valid wires
+PLI_INT32	wiring; // bit mask of wires available
+//PLI_INT16	mixing; // TODO
               } mask ;
 
 vpiHandle	wire[MAX_CHAN];
@@ -357,6 +358,10 @@ sftb_fetch_sample_calltf (char *func)
        * 	a) there is a channel for it
        */
 
+      /* At the moment all extra wires are connected to
+       * channel 0. Does it need to be changed at all??
+      */
+
       w = f * getb (sf.mask.wiring, f) ;
 
       /* Set the data value to be passed to the simulator */
@@ -479,6 +484,25 @@ sftb_wiring (char *func)
         vpi_printf ("%d", getb(sf.mask.wiring, d)) ;
       } vpi_printf ("\n") ;
 #endif
+
+  if ( x == sf.info.channels ) {
+
+	  PRINT ( "exact match!\n" ) ;
+
+  } else if ( x < sf.info.channels ) {
+
+	  PRINT ( "more wires then channels.\n" ) ;
+	  if ( 0 == (sf.info.channels % x) ) {
+		  PRINT ( "even match!\n" ) ;
+	  }
+
+  } else if ( x > sf.info.channels ) {
+
+	  PRINT ( "more channels then wires.\n" ) ;
+	  if ( 0 == (x % sf.info.channels) ) {
+		  PRINT ( "even match!\n" ) ;
+	  }
+  }
 
   return x;
 

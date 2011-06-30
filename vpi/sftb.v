@@ -40,7 +40,7 @@ $dumpfile(`OUTPUT);
 $dumpvars;
 
 repeat (`CYCLES) begin
-	$sftb_fetch_sample(audio, test1, test2);
+	$sftb_fetch_sample(audio, test1, test2, test3);
 	//$sftb_fetch_sample(audio, 0, test1, test2, clock, test3, test4, 0);
 	#(`PERIOD/2) clock <= 1'b0;
 	#(`PERIOD/2) clock <= 1'b1;
