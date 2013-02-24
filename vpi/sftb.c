@@ -321,10 +321,10 @@ sftb_fetch_sample_calltf (char *func)
    * it then the channel value will passed on
    * the given wire, if 0, skip the corresponding
    * channel. If it's a mono sound file and more
-   * then one wire argument is give, write the
+   * then one wire argument is given, write the
    * same data to all non-zero wires.
    * If we get four wires and only three channels,
-   * the fourth wire will be receive zeros.
+   * the fourth wire will receive zeros.
   */
 
   /* This needs to be done only once */
